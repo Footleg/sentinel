@@ -137,8 +137,10 @@ class RockyRoverBoard:
 
     def allOff(self):
         """ Sets all outputs off """
-        self.pwm.reset()
-        self.channelPulseLengths = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        #self.pwm.reset() #Does not set channels to off!
+        #self.channelPulseLengths = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        for i in range(0,16):
+            self.setPWMpulseLength(i, 0)
 
 
     def setServoPosition(self, channel, position):
@@ -184,12 +186,13 @@ class RockyRoverBoard:
             in place at the time the method is called.
         """
         # Scale down power using percentage power limiting value
-        scaledPower = percentPower * self.motorPowerLimiting
+        scaledPower = percentPower * self.motorPowerLimiting / 100
 
         if motor == 1:
             if scaledPower < 0:
                 powerChannel = motor1ChannelA
                 zeroChannel = motor1ChannelB
+
             else:
                 powerChannel = motor1ChannelB
                 zeroChannel = motor1ChannelA
@@ -202,7 +205,7 @@ class RockyRoverBoard:
                 zeroChannel = motor2ChannelA
 
         self.setPercentageOn(zeroChannel, 0)
-        self.setPercentageOn(powerChannel, scaledPower)
+        self.setPercentageOn(powerChannel, abs(scaledPower) )
 
 
     def setMotorsPower(self, motor1Power, motor2Power):
@@ -211,8 +214,8 @@ class RockyRoverBoard:
         self.setMotorPower(2, motor2Power)
 
 
-    def pulseWatchdog(self, duration=0.1):
-        """ Sends a pulse of a set duration (default 0.1 seconds) to the watchdog
+    def pulseWatchdog(self, duration=0.001):
+        """ Sends a pulse of a set duration (default 1 ms) to the watchdog
             to keep the PWM power alive
         """
         self.mcp.get_pin(self.watchdogPin).value = True
@@ -223,62 +226,75 @@ class RockyRoverBoard:
 def main():
     """ Test function for servos and motors
     """
+    from time import perf_counter
+
+    def watchdogPause(duration = 1):
+        pauseLen = duration
+        if duration > 0.25:
+            pauseLen = 0.25
+        high = 0.001
+        low = pauseLen - high
+        cycles = int(duration / pauseLen)
+        for i in range(cycles):
+            rrb.pulseWatchdog(high)
+            sleep(low)
 
     # Initialise board
-    rrb = RockyRoverBoard(watchdogPin=0)
+    rrb = RockyRoverBoard(watchdogPin=0)  #
 
-    # Servo on channel 0
-    testChannel = 0
-    print("Setting servo on channel {} to 0 degrees position.".format(testChannel))
-    rrb.setServoPosition(testChannel, 0)
-    for i in range(10):
-        rrb.pulseWatchdog()
-        sleep(0.1)
-    print("Setting servo on channel {} to 180 degrees position.".format(testChannel))
-    rrb.setServoPosition(testChannel, 180)
-    for i in range(10):
-        rrb.pulseWatchdog()
-        sleep(0.1)
-    print("Setting servo on channel {} to 90 degrees position.".format(testChannel))
-    rrb.setServoPosition(testChannel, 90)
-    for i in range(10):
-        rrb.pulseWatchdog()
-        sleep(0.1)
+    # Grab start time for measuring duration of tests
+    startt = perf_counter()
+
+    # Activate PWM via watchdog
+    rrb.pulseWatchdog()
+
+    # Servo on channel x
+    testChannel = 11
+    minDeg = 65
+    maxDeg = 155
+    for i in range(3):
+        if i == 0:
+            deg = minDeg
+        elif i == 1:
+            deg = maxDeg
+        else:
+            deg = minDeg + (maxDeg - minDeg) / 2
+            
+        print("Time {}: Setting servo on channel {} to {} degrees position.".format(perf_counter() - startt, testChannel, deg))
+        rrb.setServoPosition(testChannel, deg)
+        watchdogPause()
+
+    for motor in range(1,3):
+        #Ramp up motor power
+        for pwr in range (0, 101, 5):
+            rrb.setMotorPower(motor, pwr)
+            print("Time {}: Motor {} +{}".format(perf_counter() - startt, motor, pwr))
+            watchdogPause(0.1)
+
+        #Stop motor
+        rrb.setMotorPower(motor,0)
+        watchdogPause()
+
+        #Reverse motor
+        rrb.setMotorPower(motor,-50)
+        print("Time {}: Motor {} -50%".format(perf_counter() - startt, motor))
+        watchdogPause()
+        print("Time {}: Motor {} -100%".format(perf_counter() - startt, motor))
+        rrb.setMotorPower(motor,-100)
+        watchdogPause()
+        #Stop motor
+        rrb.setMotorPower(motor,0)
+        
+    # Restart both motors
+    print("Time {}: Starting both motors and sending watchdog keep-alive pulse".format(perf_counter() - startt))
+    rrb.setMotorsPower(50,-50)
+    watchdogPause()
+    
+    print("Time {}: Letting watchdog time out".format(perf_counter() - startt))
+    for i in range(3):
+        sleep(1)
+        print("Time {}".format(perf_counter() - startt))
     """
-
-    #Motor A
-    print("Setting motor A to power 50 forwards.")
-    setPercentageOn(motorAChannel1,0)
-    setPercentageOn(motorAChannel2,50)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor A to power 0.")
-    setPercentageOn(motorAChannel2,0)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor A to power 50 reverse.")
-    setPercentageOn(motorAChannel1,50)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor A to power 0.")
-    setPercentageOn(motorAChannel1,0)
-
-    #Motor B
-    print("Setting motor B to power 50 forwards.")
-    setPercentageOn(motorBChannel1,0)
-    setPercentageOn(motorBChannel2,50)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor B to power 0.")
-    setPercentageOn(motorBChannel2,0)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor B to power 50 reverse.")
-    setPercentageOn(motorBChannel1,50)
-    pulseWatchdog(0.1,wdpin)
-    sleep(0.4)
-    print("Setting motor B to power 0.")
-    setPercentageOn(motorBChannel1,0)
 
     #Test one PWM output
     setConstantOn(11)
@@ -305,6 +321,8 @@ def main():
     print("Turning off all PWM channels.")
     rrb.allOff()
 
+    print("Reactivate watchdog for 1 second.") #Servo and motor should remain inactive now
+    watchdogPause()
 
 if __name__ == '__main__':
     main()
