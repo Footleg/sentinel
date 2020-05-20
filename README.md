@@ -15,7 +15,7 @@ sudo apt-get upgrade
 ```
 
 ```bash
-sudo pip3 install --upgrade setuptools
+pip3 install --upgrade setuptools
 ```
 
 If above doesn't work try:
@@ -33,11 +33,11 @@ pip3 install adafruit-blinka
 ```
 
 ```bash
-sudo pip3 install adafruit-circuitpython-pca9685
+pip3 install adafruit-circuitpython-pca9685
 ```
 
 ```bash
-sudo pip3 install adafruit-circuitpython-mcp230xx
+pip3 install adafruit-circuitpython-mcp230xx
 ```
 
 Before running the examples, it is recommended to ensure you have the latest versions of the hardware support libraries:
