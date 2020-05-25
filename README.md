@@ -1,4 +1,4 @@
-# Rocky Rover Robotics Board
+# Sentinel Robotics Controller Board
 Python libraries for the Rocky Rover robotics board for the Raspberry Pi and arduino/micro controllers running Circuit Python
 
 ## Installation
