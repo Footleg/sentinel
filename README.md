@@ -1,5 +1,5 @@
 # Sentinel Robot Controller Board
-Python libraries for the Sentinel robot controller board for the Raspberry Pi and arduino/micro controllers running Circuit Python
+Python libraries for the Sentinel robot controller board for the Raspberry Pi and micro controller boards running Circuit Python
 
 ## Installation
 
@@ -43,5 +43,16 @@ pip3 install adafruit-circuitpython-mcp230xx
 Before running the examples, it is recommended to ensure you have the latest versions of the hardware support libraries:
 ```bash
 pip3 install --upgrade RPI.GPIO adafruit_blinka  adafruit-circuitpython-pca9685 adafruit-circuitpython-mcp230xx
+```
+
+Once this library is complete it should be possible to install the library and all dependencies using pip. But for now while it is in a pre-release state you will need to install from the source as follows:
+Open a terminal window in the 'library' folder and run the following script:
+```bash
+python3 setup.py install
+```
+
+You should now be able to import the library into your python modules:
+```bash
+import sentinelboard
 ```
 

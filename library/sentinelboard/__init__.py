@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-""" Library for the Footleg Robotics Rocky Rover robot control board
-    Supports board revision 1.2
+""" Library for the Footleg Robotics Sentinel robot controller board
 
     Dependencies
     ------------
@@ -14,7 +13,7 @@
     pip3 install --upgrade RPI.GPIO adafruit_blinka  adafruit-circuitpython-pca9685 adafruit-circuitpython-mcp230xx
 
     For full installation guide, see:
-    https://github.com/Footleg/rocky-rover-board
+    https://github.com/Footleg/sentinel
 
     MIT License
 
@@ -47,8 +46,8 @@ from adafruit_mcp230xx.mcp23017 import MCP23017
 from digitalio import Direction
 
 # Hardware fixed PWM channel numbers used for motor drivers
-motor1ChannelA = 12
-motor1ChannelB = 13
+motor1ChannelA = 4
+motor1ChannelB = 5
 motor2ChannelA = 15
 motor2ChannelB = 14
 
@@ -56,9 +55,8 @@ motor2ChannelB = 14
 # takes a 16 bit value but hardware resolution is only 12 bit)
 maxPulseLength = 0xffff
 
-class RockyRoverBoard:
-    """ Control class to represent a Footleg Robotics Rocky Rover robot control board
-        Supports board revision 1.2
+class SentinelBoard:
+    """ Control class to represent a Footleg Robotics Sentinel robot controller board
     """
     def __init__(self, addressPWM=0x40, addressIOE=0x20, freqPWM=50,
                  servoMinPulse=1680, servoMaxPulse=8000, servoRange=180,
@@ -240,7 +238,7 @@ def main():
             sleep(low)
 
     # Initialise board
-    rrb = RockyRoverBoard(watchdogPin=0)  #
+    rrb = SentinelBoard()
 
     # Grab start time for measuring duration of tests
     startt = perf_counter()
@@ -249,7 +247,7 @@ def main():
     rrb.pulseWatchdog()
 
     # Servo on channel x
-    testChannel = 11
+    testChannel = 0
     minDeg = 65
     maxDeg = 155
     for i in range(3):
@@ -259,7 +257,7 @@ def main():
             deg = maxDeg
         else:
             deg = minDeg + (maxDeg - minDeg) / 2
-            
+
         print("Time {}: Setting servo on channel {} to {} degrees position.".format(perf_counter() - startt, testChannel, deg))
         rrb.setServoPosition(testChannel, deg)
         watchdogPause()
@@ -284,12 +282,12 @@ def main():
         watchdogPause()
         #Stop motor
         rrb.setMotorPower(motor,0)
-        
+
     # Restart both motors
     print("Time {}: Starting both motors and sending watchdog keep-alive pulse".format(perf_counter() - startt))
     rrb.setMotorsPower(50,-50)
     watchdogPause()
-    
+
     print("Time {}: Letting watchdog time out".format(perf_counter() - startt))
     for i in range(3):
         sleep(1)
