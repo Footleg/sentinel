@@ -44,12 +44,13 @@ import busio
 from adafruit_pca9685 import PCA9685
 from adafruit_mcp230xx.mcp23017 import MCP23017
 from digitalio import Direction
+from adafruit_bus_device.i2c_device import I2CDevice
 
 # Hardware fixed PWM channel numbers used for motor drivers
-motor1ChannelA = 4
-motor1ChannelB = 5
-motor2ChannelA = 15
-motor2ChannelB = 14
+motor1ChannelA = 12
+motor1ChannelB = 13
+motor2ChannelA = 14
+motor2ChannelB = 15
 
 # Length of an always on pulse for the pwm board (circuit python library
 # takes a 16 bit value but hardware resolution is only 12 bit)
@@ -97,6 +98,9 @@ class SentinelBoard:
             p = self.mcp.get_pin(self.watchdogPin)
             p.direction = Direction.OUTPUT
             p.value = 0
+        
+        # Initialise adc for voltage reading
+        self.adc = I2CDevice(i2c, 0x4D)
 
 
     def setPWMpulseLength(self, channel, pulse):
@@ -220,6 +224,22 @@ class SentinelBoard:
         sleep(duration)
         self.mcp.get_pin(self.watchdogPin).value = False
 
+    
+    def motorVoltage(self):
+        readbuf = bytearray(2)
+        piVolts = 5.2
+        
+        self.adc.readinto(readbuf)
+        # Combine 2 bytes into word
+        adcVal = 0x100 * readbuf[0] + readbuf[1]
+        # Convert reading to voltage based on ratio of Pi power supply voltage
+        adcVoltage = piVolts * adcVal / 0xFFF
+        # Convert to motor supply voltage based on resistor divider 1.24K / 10K
+        # multiplied by correction mulitpler (compensates for imprecision of resistor values)
+        motorSupplyVoltage = adcVoltage * 8.0645 * 1.1
+        
+        return motorSupplyVoltage
+    
 
 def main():
     """ Test function for servos and motors
