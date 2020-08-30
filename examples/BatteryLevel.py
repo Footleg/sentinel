@@ -7,6 +7,9 @@ from sentinelboard import SentinelBoard
 
 sb = SentinelBoard()
 
-motorV = sb.motorVoltage()
+motorV = sb.motor_voltage
+print(f"Motor supply voltage: {motorV:.2f}")
 
-print("Motor supply voltage: {}".format(motorV) )
+sb.voltageAdjustMultiplier = 1.1
+motorV = sb.motor_voltage
+print(f"Motor supply voltage: {motorV:.2f}")

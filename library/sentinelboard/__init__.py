@@ -100,9 +100,20 @@ class SentinelBoard:
             p.value = 0
         
         # Initialise adc for voltage reading
+        self._voltageAdjustMultiplier = 1.1025
         self.adc = I2CDevice(i2c, 0x4D)
 
 
+    @property
+    def voltageAdjustMultiplier(self):
+        return self._voltageAdjustMultiplier
+    
+    
+    @voltageAdjustMultiplier.setter
+    def voltageAdjustMultiplier(self,value):
+        self._voltageAdjustMultiplier = value
+        
+    
     def setPWMpulseLength(self, channel, pulse):
         """ Helper method used to set any PWM channel.
             All code setting PWM outputs should use this method so the hardware interface
@@ -224,8 +235,8 @@ class SentinelBoard:
         sleep(duration)
         self.mcp.get_pin(self.watchdogPin).value = False
 
-    
-    def motorVoltage(self):
+    @property
+    def motor_voltage(self):
         readbuf = bytearray(2)
         piVolts = 5.2
         
@@ -236,26 +247,37 @@ class SentinelBoard:
         adcVoltage = piVolts * adcVal / 0xFFF
         # Convert to motor supply voltage based on resistor divider 1.24K / 10K
         # multiplied by correction mulitpler (compensates for imprecision of resistor values)
-        motorSupplyVoltage = adcVoltage * 8.0645 * 1.1
+        motorSupplyVoltage = adcVoltage * 8.0645 * self._voltageAdjustMultiplier
         
         return motorSupplyVoltage
     
+    def watchdogPause(self, duration = 1):
+        """ Method to pause code execution while keeping the watchdog pulses
+            running so the board PWM output remains active
+        """
+        highDuration = 0.001
+        pauseLen = duration
+        if duration > 0.25:
+            # Break pause into 0.25s cycles
+            pauseLen = 0.25
+            
+        lowDuration = pauseLen - highDuration
+        cycles = int(duration / pauseLen)
+        remainder = duration - highDuration - cycles*pauseLen
+        
+        for i in range(cycles):
+            self.pulseWatchdog(highDuration)
+            sleep(lowDuration)
+            
+        self.pulseWatchdog(highDuration)
+        if remainder > 0:
+            sleep(remainder)
 
 def main():
     """ Test function for servos and motors
     """
     from time import perf_counter
 
-    def watchdogPause(duration = 1):
-        pauseLen = duration
-        if duration > 0.25:
-            pauseLen = 0.25
-        high = 0.001
-        low = pauseLen - high
-        cycles = int(duration / pauseLen)
-        for i in range(cycles):
-            rrb.pulseWatchdog(high)
-            sleep(low)
 
     # Initialise board
     rrb = SentinelBoard()
