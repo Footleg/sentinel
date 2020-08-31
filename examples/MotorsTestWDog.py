@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ Example for the Footleg Robotics Sentinel robot controller board
-    Reads the voltage of the motor power supply
+    Powers up motors on the two motor drivers at various speeds
+    with the watchdog circuit active.
 """
 
 from time import perf_counter, sleep
@@ -34,7 +35,7 @@ for motor in range(1,3):
     print(f"Time {perf_counter() - startt:.2f}: Motor {motor} -100%")
     sb.setMotorPower(motor,-100)
     sb.watchdogPause()
-    
+
     #Stop motor
     sb.setMotorPower(motor,0)
 
@@ -47,7 +48,7 @@ print(f"Time {perf_counter() - startt:.2f}: Letting watchdog time out")
 for i in range(12):
     sleep(0.25)
     print(f"Time {perf_counter() - startt:.2f}: No watchdog keep alive pulses")
-    
+
 print("Activate watchdog")
 sb.pulseWatchdog()
 

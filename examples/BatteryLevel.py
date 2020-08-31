@@ -10,6 +10,6 @@ sb = SentinelBoard()
 motorV = sb.motor_voltage
 print(f"Motor supply voltage: {motorV:.2f}")
 
-sb.voltageAdjustMultiplier = 1.1
+sb.voltage_multiplier = 1.11
 motorV = sb.motor_voltage
 print(f"Motor supply voltage: {motorV:.2f}")

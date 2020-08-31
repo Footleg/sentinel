@@ -43,7 +43,7 @@ from board import SCL, SDA
 import busio
 from adafruit_pca9685 import PCA9685
 from adafruit_mcp230xx.mcp23017 import MCP23017
-from digitalio import Direction
+import digitalio
 from adafruit_bus_device.i2c_device import I2CDevice
 
 # Hardware fixed PWM channel numbers used for motor drivers
@@ -91,29 +91,95 @@ class SentinelBoard:
         self.pwm.frequency = freqPWM
 
         # Initialise MCP 16 channel io
-        self.mcp = MCP23017(i2c, address=addressIOE)
+        self._mcp23017 = MCP23017(i2c, address=addressIOE)
 
         # Initialise watchdog signal pin (if set)
         if 0 <= self.watchdogPin < 16:
-            p = self.mcp.get_pin(self.watchdogPin)
-            p.direction = Direction.OUTPUT
-            p.value = 0
-        
+            p = self._mcp23017.get_pin(self.watchdogPin)
+            p.direction = digitalio.Direction.OUTPUT
+            p.value = False
+
         # Initialise adc for voltage reading
-        self._voltageAdjustMultiplier = 1.1025
+        self._voltageAdjustMultiplier = 1.1
+        self._voltageFloor = 0.24
         self.adc = I2CDevice(i2c, 0x4D)
 
 
+    def configureIOE(self, pin, out=True, pullUp=False):
+        """ Enables any pin on the IO expander to be configured
+            as either an input (set out=False) or output (default
+            if out argument is omitted, or out=True). If a pin is
+            configured as an output, the pullUp argument is used
+            to initialise it to HIGH or LOW (default). If set as
+            and input the pullUp argument determines if internal
+            pull-up resistor is set (pullUp=True), or input is left
+            floating (deafult).
+        """
+        p = self._mcp23017.get_pin(pin)
+        if (out):
+            p.direction = digitalio.Direction.OUTPUT
+            p.value = pullUp
+        else:
+            p.direction = digitalio.Direction.INPUT
+            if (pullUp):
+                p.pull = digitalio.Pull.UP
+            else:
+                # Note hardware does not have built in pull down
+                # so this is just setting to floating input
+                p.pull = digitalio.Pull.DOWN
+
+
+    def readIOPin(self, pin):
+        """ Returns the logic state of any IO pin whether configured as
+            an input or output.
+        """
+        return self._mcp23017.get_pin(pin).value
+
+
+    def setOutput(self, pin, value):
+        """ Sets the logic state of any IO pin configured as
+            an output.
+        """
+        self._mcp23017.get_pin(pin).value = value
+
+
     @property
-    def voltageAdjustMultiplier(self):
+    def mcp23017(self):
+        """ Direct access to the MCP23017 object for lower level digital
+            IO control. This enables you to configure interupts for input
+            pins and read, set or configure the groups of IO pins all at once
+            via the chip registers.
+            See the Adafruit documentation for this object at
+            https://circuitpython.readthedocs.io/projects/mcp230xx/en/latest/api.html#mcp23017
+        """
+        return self._mcp23017
+
+
+    @property
+    def voltage_multiplier(self):
+        """ The voltage_multiplier property is used to compensate for
+            the difference in ADC calculated voltage and measured voltage.
+        """
         return self._voltageAdjustMultiplier
-    
-    
-    @voltageAdjustMultiplier.setter
-    def voltageAdjustMultiplier(self,value):
+
+
+    @voltage_multiplier.setter
+    def voltage_multiplier(self,value):
+        """ Set the voltage_multiplier to a non-default value.
+        """
         self._voltageAdjustMultiplier = value
-        
-    
+
+
+    @property
+    def voltage_floor(self):
+        return self._voltageAdjustMultiplier
+
+
+    @voltage_floor.setter
+    def voltage_floor(self,value):
+        self._voltageFloor = value
+
+
     def setPWMpulseLength(self, channel, pulse):
         """ Helper method used to set any PWM channel.
             All code setting PWM outputs should use this method so the hardware interface
@@ -229,17 +295,19 @@ class SentinelBoard:
 
     def pulseWatchdog(self, duration=0.001):
         """ Sends a pulse of a set duration (default 1 ms) to the watchdog
-            to keep the PWM power alive
+            to keep the PWM power alive. This only applies when one of the
+            IO extender pins has been configured (and wired) to be the
+            watchdog circuit input.
         """
-        self.mcp.get_pin(self.watchdogPin).value = True
+        self._mcp23017.get_pin(self.watchdogPin).value = True
         sleep(duration)
-        self.mcp.get_pin(self.watchdogPin).value = False
+        self._mcp23017.get_pin(self.watchdogPin).value = False
 
     @property
     def motor_voltage(self):
         readbuf = bytearray(2)
         piVolts = 5.2
-        
+
         self.adc.readinto(readbuf)
         # Combine 2 bytes into word
         adcVal = 0x100 * readbuf[0] + readbuf[1]
@@ -247,10 +315,10 @@ class SentinelBoard:
         adcVoltage = piVolts * adcVal / 0xFFF
         # Convert to motor supply voltage based on resistor divider 1.24K / 10K
         # multiplied by correction mulitpler (compensates for imprecision of resistor values)
-        motorSupplyVoltage = adcVoltage * 8.0645 * self._voltageAdjustMultiplier
-        
+        motorSupplyVoltage = (adcVoltage*8.0645 - self._voltageFloor)*self._voltageAdjustMultiplier
+
         return motorSupplyVoltage
-    
+
     def watchdogPause(self, duration = 1):
         """ Method to pause code execution while keeping the watchdog pulses
             running so the board PWM output remains active
@@ -260,15 +328,15 @@ class SentinelBoard:
         if duration > 0.25:
             # Break pause into 0.25s cycles
             pauseLen = 0.25
-            
+
         lowDuration = pauseLen - highDuration
         cycles = int(duration / pauseLen)
         remainder = duration - highDuration - cycles*pauseLen
-        
+
         for i in range(cycles):
             self.pulseWatchdog(highDuration)
             sleep(lowDuration)
-            
+
         self.pulseWatchdog(highDuration)
         if remainder > 0:
             sleep(remainder)
@@ -344,7 +412,7 @@ def main():
     #Test one IO
     ioPin = 7
 
-    pin = mcp.get_pin(ioPin)
+    pin = mcp23017.get_pin(ioPin)
     pin.direction = Direction.OUTPUT
     for i in range(50):
         pin.value = True
@@ -352,10 +420,6 @@ def main():
         pin.value = False
         sleep(0.1)
     """
-
-    #mcp.config(ioPin, mcp.OUTPUT)
-    #mcp.output(ioPin, 1)  # Pin High
-    #mcp.output(ioPin, 0)  # Pin Low
 
     #All Off
     print("Turning off all PWM channels.")
