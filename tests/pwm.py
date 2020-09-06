@@ -5,16 +5,21 @@
     send pulses watchdog pin to keep pwm alive.
 """
 
+import sys
 from time import sleep
 import digitalio
 from sentinelboard import SentinelHardware
+
+if len(sys.argv) > 1:
+    bank = int(sys.argv[1])
+else:
+    #Set bank of pwm outsputs to test (0 - 2)
+    bank = 0
 
 sh = SentinelHardware()
 
 watchdogPin = 7
 
-#Set bank of pwm outsputs to test (0 - 2)
-bank = 1
 
 #Configure IO for watchdog pin
 p = sh.mcp23017.get_pin(watchdogPin)
@@ -36,11 +41,15 @@ for c in range( (bank*4), (bank*4 + 4) ):
 
     sh.setPercentageOn(c,0)
 
+# Turn off all outputs
+sh.allOff()
+sleep(0.5)
+
 # Test watchdog disables pwm outputs if not kept alive
 for c in range( (bank*4), (bank*4 + 4) ):
     sh.setConstantOn(c)
 
-for i in range(10):
+for i in range(5):
     # Keep watchdog alive by briefly pulsing input high
     sh.mcp23017.get_pin(watchdogPin).value = True
     sleep(0.01)
