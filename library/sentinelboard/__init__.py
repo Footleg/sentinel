@@ -56,28 +56,10 @@ motor2ChannelB = 15
 # takes a 16 bit value but hardware resolution is only 12 bit)
 maxPulseLength = 0xffff
 
-class SentinelBoard:
-    """ Control class to represent a Footleg Robotics Sentinel robot controller board
+class SentinelHardware:
+    """ Low level hardware inteface class for the Sentinel Board
     """
-    def __init__(self, addressPWM=0x40, addressIOE=0x20, freqPWM=50,
-                 servoMinPulse=1680, servoMaxPulse=8000, servoRange=180,
-                 watchdogPin=7
-                 ):
-
-        # Set servo min and max pulse length for the range of rotation of the servo model being used
-        # Min pulse length (105 out of 4096) * 16 for 16 bit values in Circuit Python
-        self.servoMinPulse = servoMinPulse
-        # Max pulse length (475-500 out of 4096) * 16 for 16 bit values in Circuit Python
-        self.servoMaxPulse = servoMaxPulse
-        # Rotation range in degrees of the servos being used
-        self.servoRange = servoRange
-
-        # Store which IO expander pin is being used to send the watchdog keep alive signal
-        self.watchdogPin = watchdogPin
-
-        # Limits motors max power to a percentage of supplied voltage
-        self.motorPowerLimiting = 100
-
+    def __init__(self, addressPWM=0x40, addressIOE=0x20, freqPWM=50):
         # Initialise pulse lengths store for each PWM channel (for reading back what they were set to)
         self.channelPulseLengths = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
@@ -93,54 +75,10 @@ class SentinelBoard:
         # Initialise MCP 16 channel io
         self._mcp23017 = MCP23017(i2c, address=addressIOE)
 
-        # Initialise watchdog signal pin (if set)
-        if 0 <= self.watchdogPin < 16:
-            p = self._mcp23017.get_pin(self.watchdogPin)
-            p.direction = digitalio.Direction.OUTPUT
-            p.value = False
-
         # Initialise adc for voltage reading
         self._voltageAdjustMultiplier = 1.1
         self._voltageFloor = 0.24
         self.adc = I2CDevice(i2c, 0x4D)
-
-
-    def configureIOE(self, pin, out=True, pullUp=False):
-        """ Enables any pin on the IO expander to be configured
-            as either an input (set out=False) or output (default
-            if out argument is omitted, or out=True). If a pin is
-            configured as an output, the pullUp argument is used
-            to initialise it to HIGH or LOW (default). If set as
-            and input the pullUp argument determines if internal
-            pull-up resistor is set (pullUp=True), or input is left
-            floating (deafult).
-        """
-        p = self._mcp23017.get_pin(pin)
-        if (out):
-            p.direction = digitalio.Direction.OUTPUT
-            p.value = pullUp
-        else:
-            p.direction = digitalio.Direction.INPUT
-            if (pullUp):
-                p.pull = digitalio.Pull.UP
-            else:
-                # Note hardware does not have built in pull down
-                # so this is just setting to floating input
-                p.pull = digitalio.Pull.DOWN
-
-
-    def readIOPin(self, pin):
-        """ Returns the logic state of any IO pin whether configured as
-            an input or output.
-        """
-        return self._mcp23017.get_pin(pin).value
-
-
-    def setOutput(self, pin, value):
-        """ Sets the logic state of any IO pin configured as
-            an output.
-        """
-        self._mcp23017.get_pin(pin).value = value
 
 
     @property
@@ -178,6 +116,23 @@ class SentinelBoard:
     @voltage_floor.setter
     def voltage_floor(self,value):
         self._voltageFloor = value
+
+
+    @property
+    def motor_voltage(self):
+        readbuf = bytearray(2)
+        piVolts = 5.2
+
+        self.adc.readinto(readbuf)
+        # Combine 2 bytes into word
+        adcVal = 0x100 * readbuf[0] + readbuf[1]
+        # Convert reading to voltage based on ratio of Pi power supply voltage
+        adcVoltage = piVolts * adcVal / 0xFFF
+        # Convert to motor supply voltage based on resistor divider 1.24K / 10K
+        # multiplied by correction mulitpler (compensates for imprecision of resistor values)
+        motorSupplyVoltage = (adcVoltage*8.0645 - self._voltageFloor)*self._voltageAdjustMultiplier
+
+        return motorSupplyVoltage
 
 
     def setPWMpulseLength(self, channel, pulse):
@@ -222,6 +177,76 @@ class SentinelBoard:
             self.setPWMpulseLength(i, 0)
 
 
+class SentinelBoard:
+    """ Control class to represent a Footleg Robotics Sentinel robot controller board
+    """
+    def __init__(self, addressPWM=0x40, addressIOE=0x20, freqPWM=50,
+                 servoMinPulse=1680, servoMaxPulse=8000, servoRange=180,
+                 watchdogPin=7
+                 ):
+
+        # Set servo min and max pulse length for the range of rotation of the servo model being used
+        # Min pulse length (105 out of 4096) * 16 for 16 bit values in Circuit Python
+        self.servoMinPulse = servoMinPulse
+        # Max pulse length (475-500 out of 4096) * 16 for 16 bit values in Circuit Python
+        self.servoMaxPulse = servoMaxPulse
+        # Rotation range in degrees of the servos being used
+        self.servoRange = servoRange
+
+        # Store which IO expander pin is being used to send the watchdog keep alive signal
+        self.watchdogPin = watchdogPin
+
+        # Limits motors max power to a percentage of supplied voltage
+        self.motorPowerLimiting = 100
+
+        # Create hardware interface object
+        self.sbHardware = SentinelHardware(addressPWM, addressIOE, freqPWM)
+
+        # Initialise watchdog signal pin (if set)
+        if 0 <= self.watchdogPin < 16:
+            p = self.sbHardware.mcp23017.get_pin(self.watchdogPin)
+            p.direction = digitalio.Direction.OUTPUT
+            p.value = False
+
+
+    def configureIOE(self, pin, out=True, pullUp=False):
+        """ Enables any pin on the IO expander to be configured
+            as either an input (set out=False) or output (default
+            if out argument is omitted, or out=True). If a pin is
+            configured as an output, the pullUp argument is used
+            to initialise it to HIGH or LOW (default). If set as
+            and input the pullUp argument determines if internal
+            pull-up resistor is set (pullUp=True), or input is left
+            floating (deafult).
+        """
+        p = self.sbHardware.mcp23017.get_pin(pin)
+        if (out):
+            p.direction = digitalio.Direction.OUTPUT
+            p.value = pullUp
+        else:
+            p.direction = digitalio.Direction.INPUT
+            if (pullUp):
+                p.pull = digitalio.Pull.UP
+            else:
+                # Note hardware does not have built in pull down
+                # so this is just setting to floating input
+                p.pull = digitalio.Pull.DOWN
+
+
+    def readIOPin(self, pin):
+        """ Returns the logic state of any IO pin whether configured as
+            an input or output.
+        """
+        return self.sbHardware.mcp23017.get_pin(pin).value
+
+
+    def setOutput(self, pin, value):
+        """ Sets the logic state of any IO pin configured as
+            an output.
+        """
+        self.sbHardware.mcp23017.get_pin(pin).value = value
+
+
     def setServoPosition(self, channel, position):
         """ Sets the position of a servo in degrees
         """
@@ -239,7 +264,7 @@ class SentinelBoard:
         else:
             print("Setting servo {} pulse to {}".format(channel, pulse) )
             # pwm.setPWM(channel, 0, pulse)
-            self.setPWMpulseLength(channel, pulse)
+            self.sbHardware.setPWMpulseLength(channel, pulse)
 
 
     def setMotorPowerLimiting(self, percentage):
@@ -283,8 +308,8 @@ class SentinelBoard:
                 powerChannel = motor2ChannelB
                 zeroChannel = motor2ChannelA
 
-        self.setPercentageOn(zeroChannel, 0)
-        self.setPercentageOn(powerChannel, abs(scaledPower) )
+        self.sbHardware.setPercentageOn(zeroChannel, 0)
+        self.sbHardware.setPercentageOn(powerChannel, abs(scaledPower) )
 
 
     def setMotorsPower(self, motor1Power, motor2Power):
@@ -299,25 +324,10 @@ class SentinelBoard:
             IO expander pins has been configured (and wired) to be the
             watchdog circuit input.
         """
-        self._mcp23017.get_pin(self.watchdogPin).value = True
+        self.sbHardware.mcp23017.get_pin(self.watchdogPin).value = True
         sleep(duration)
-        self._mcp23017.get_pin(self.watchdogPin).value = False
+        self.sbHardware.mcp23017.get_pin(self.watchdogPin).value = False
 
-    @property
-    def motor_voltage(self):
-        readbuf = bytearray(2)
-        piVolts = 5.2
-
-        self.adc.readinto(readbuf)
-        # Combine 2 bytes into word
-        adcVal = 0x100 * readbuf[0] + readbuf[1]
-        # Convert reading to voltage based on ratio of Pi power supply voltage
-        adcVoltage = piVolts * adcVal / 0xFFF
-        # Convert to motor supply voltage based on resistor divider 1.24K / 10K
-        # multiplied by correction mulitpler (compensates for imprecision of resistor values)
-        motorSupplyVoltage = (adcVoltage*8.0645 - self._voltageFloor)*self._voltageAdjustMultiplier
-
-        return motorSupplyVoltage
 
     def watchdogPause(self, duration = 1):
         """ Method to pause code execution while keeping the watchdog pulses
@@ -340,6 +350,7 @@ class SentinelBoard:
         self.pulseWatchdog(highDuration)
         if remainder > 0:
             sleep(remainder)
+
 
 def main():
     """ Test function for servos and motors

@@ -7,9 +7,12 @@ from sentinelboard import SentinelBoard
 
 sb = SentinelBoard()
 
-motorV = sb.motor_voltage
+#Get motor voltage using default calibration
+motorV = sb.sbHardware.motor_voltage
 print(f"Motor supply voltage: {motorV:.2f}")
 
-sb.voltage_multiplier = 1.11
-motorV = sb.motor_voltage
+#Adjust calibration for your specific board
+sb.sbHardware.voltage_floor = 0.195
+sb.sbHardware.voltage_multiplier = 1.11
+motorV = sb.sbHardware.motor_voltage
 print(f"Motor supply voltage: {motorV:.2f}")

@@ -11,6 +11,7 @@ Sentinel - A Robot Controller Board
    :caption: Contents:
 
    library
+   hardware_interface
 
 Indices and tables
 ==================
