@@ -296,7 +296,7 @@ class SentinelBoard:
     def pulseWatchdog(self, duration=0.001):
         """ Sends a pulse of a set duration (default 1 ms) to the watchdog
             to keep the PWM power alive. This only applies when one of the
-            IO extender pins has been configured (and wired) to be the
+            IO expander pins has been configured (and wired) to be the
             watchdog circuit input.
         """
         self._mcp23017.get_pin(self.watchdogPin).value = True
