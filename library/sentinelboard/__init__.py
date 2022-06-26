@@ -17,7 +17,7 @@
 
     MIT License
 
-    (c) Paul 'Footleg' Fretwell 2020
+    (c) Paul 'Footleg' Fretwell 2022
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -56,6 +56,9 @@ motor2ChannelB = 15
 # takes a 16 bit value but hardware resolution is only 12 bit)
 maxPulseLength = 0xffff
 
+# Number of times to try reading an i2c device before giving up
+i2cRetryMax = 50
+
 class SentinelHardware:
     """ Low level hardware inteface class for the Sentinel Board
     """
@@ -78,8 +81,14 @@ class SentinelHardware:
         # Initialise adc for voltage reading
         self._voltageAdjustMultiplier = 1.1
         self._voltageFloor = 0.24
-        self.adc = I2CDevice(i2c, 0x4D)
-
+        
+        tries = 0
+        while tries < i2cRetryMax:
+            try:
+                self.adc = I2CDevice(i2c, 0x4D)
+                tries = i2cRetryMax
+            except:
+                tries +=1
 
     @property
     def mcp23017(self):
@@ -123,7 +132,14 @@ class SentinelHardware:
         readbuf = bytearray(2)
         piVolts = 5.2
 
-        self.adc.readinto(readbuf)
+        tries = 0
+        while tries < i2cRetryMax:
+            try:
+                self.adc.readinto(readbuf)
+                tries = i2cRetryMax
+            except:
+                tries +=1
+
         # Combine 2 bytes into word
         adcVal = 0x100 * readbuf[0] + readbuf[1]
         # Convert reading to voltage based on ratio of Pi power supply voltage
@@ -142,11 +158,13 @@ class SentinelHardware:
             is set to.
         """
         # Set PWM hardware output
-        active_channel = self.pwm.channels[channel]
-        active_channel.duty_cycle = pulse
-        # Store setting in array for reading back what values have been set
-        self.channelPulseLengths[channel] = pulse
-
+        try:
+            active_channel = self.pwm.channels[channel]
+            active_channel.duty_cycle = pulse
+            # Store setting in array for reading back what values have been set
+            self.channelPulseLengths[channel] = pulse
+        except:
+            print("Error setting pca9685 duty cycle.")
 
     def setPercentageOn(self, channel, percent):
         """ Sets the percentage of time a PWM channel is on per duty cycle.
@@ -262,7 +280,7 @@ class SentinelBoard:
         elif (channel < 0) or (channel > 11):
             print("Attempt to set servo position using an invalid channel {}".format(channel) )
         else:
-            print("Setting servo {} pulse to {}".format(channel, pulse) )
+            # print("Setting servo {} pulse to {}".format(channel, pulse) )
             # pwm.setPWM(channel, 0, pulse)
             self.sbHardware.setPWMpulseLength(channel, pulse)
 
@@ -292,6 +310,8 @@ class SentinelBoard:
         # Scale down power using percentage power limiting value
         scaledPower = percentPower * self.motorPowerLimiting / 100
 
+        # print(f"Setting motor {motor} to power {scaledPower}")
+
         if motor == 1:
             if scaledPower < 0:
                 powerChannel = motor1ChannelA
@@ -307,6 +327,8 @@ class SentinelBoard:
             else:
                 powerChannel = motor2ChannelB
                 zeroChannel = motor2ChannelA
+        else:
+            raise ValueError(f'Unsupported motor value {motor}. Motor values must by either 1 or 2.')
 
         self.sbHardware.setPercentageOn(zeroChannel, 0)
         self.sbHardware.setPercentageOn(powerChannel, abs(scaledPower) )
@@ -352,6 +374,12 @@ class SentinelBoard:
             sleep(remainder)
 
 
+    def allOff(self):
+        """ Method to turn off all motors and servos
+        """
+        self.sbHardware.allOff()
+
+
 def main():
     """ Test function for servos and motors
     """
@@ -359,13 +387,13 @@ def main():
 
 
     # Initialise board
-    rrb = SentinelBoard()
+    sb = SentinelBoard()
 
     # Grab start time for measuring duration of tests
     startt = perf_counter()
 
     # Activate PWM via watchdog
-    rrb.pulseWatchdog()
+    sb.pulseWatchdog()
 
     # Servo on channel x
     testChannel = 0
@@ -380,34 +408,34 @@ def main():
             deg = minDeg + (maxDeg - minDeg) / 2
 
         print("Time {}: Setting servo on channel {} to {} degrees position.".format(perf_counter() - startt, testChannel, deg))
-        rrb.setServoPosition(testChannel, deg)
-        watchdogPause()
+        sb.setServoPosition(testChannel, deg)
+        sb.watchdogPause()
 
     for motor in range(1,3):
         #Ramp up motor power
         for pwr in range (0, 101, 5):
-            rrb.setMotorPower(motor, pwr)
+            sb.setMotorPower(motor, pwr)
             print("Time {}: Motor {} +{}".format(perf_counter() - startt, motor, pwr))
-            watchdogPause(0.1)
+            sb.watchdogPause(0.1)
 
         #Stop motor
-        rrb.setMotorPower(motor,0)
-        watchdogPause()
+        sb.setMotorPower(motor,0)
+        sb.watchdogPause()
 
         #Reverse motor
-        rrb.setMotorPower(motor,-50)
+        sb.setMotorPower(motor,-50)
         print("Time {}: Motor {} -50%".format(perf_counter() - startt, motor))
-        watchdogPause()
+        sb.watchdogPause()
         print("Time {}: Motor {} -100%".format(perf_counter() - startt, motor))
-        rrb.setMotorPower(motor,-100)
-        watchdogPause()
+        sb.setMotorPower(motor,-100)
+        sb.watchdogPause()
         #Stop motor
-        rrb.setMotorPower(motor,0)
+        sb.setMotorPower(motor,0)
 
     # Restart both motors
     print("Time {}: Starting both motors and sending watchdog keep-alive pulse".format(perf_counter() - startt))
-    rrb.setMotorsPower(50,-50)
-    watchdogPause()
+    sb.setMotorsPower(50,-50)
+    sb.watchdogPause()
 
     print("Time {}: Letting watchdog time out".format(perf_counter() - startt))
     for i in range(3):
@@ -434,10 +462,10 @@ def main():
 
     #All Off
     print("Turning off all PWM channels.")
-    rrb.allOff()
+    sb.allOff()
 
     print("Reactivate watchdog for 1 second.") #Servo and motor should remain inactive now
-    watchdogPause()
+    sb.watchdogPause()
 
 if __name__ == '__main__':
     main()
